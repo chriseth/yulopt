@@ -1,0 +1,6 @@
+name = "YulC"
+version = "0.1.0"
+defaultTargets = ["YulC"]
+
+[[lean_lib]]
+name = "YulC"
