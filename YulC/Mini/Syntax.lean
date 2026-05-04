@@ -44,6 +44,12 @@ inductive Stmt where
   | letDecl (x : Ident) (rhs : Expr)
   | assign  (x : Ident) (rhs : Expr)
   | block   (body : List Stmt)
+  /-- `if cond { body }`. The body is restricted to **layout-preserving**
+  statements (no `letDecl`s leaking out): if the body alters the
+  environment shape, `Stmt.exec` returns `none`. This keeps codegen
+  one-to-one with a structured `Op.iff` and avoids per-branch stack
+  housekeeping. -/
+  | iff     (cond : Expr) (body : List Stmt)
   deriving Repr, Inhabited
 
 mutual
@@ -54,6 +60,7 @@ def Stmt.beq : Stmt → Stmt → Bool
   | .letDecl x e, .letDecl x' e' => x == x' && e == e'
   | .assign x e,  .assign x' e'  => x == x' && e == e'
   | .block b,     .block b'      => Program.beq b b'
+  | .iff c b,     .iff c' b'     => c == c' && Program.beq b b'
   | _, _ => false
 
 /-- Structural equality on `Program` (a list of statements). -/

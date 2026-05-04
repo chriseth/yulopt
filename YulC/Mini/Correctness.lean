@@ -84,7 +84,8 @@ theorem Expr.compile_correct
     | none => rw [hd] at hx; simp at hx
     | some d =>
       rw [hd] at hx; simp at hx
-      exact ⟨[Op.dup (d + 1)], by simp [hd], by simp [hx.symm]⟩
+      exact ⟨[Op.dup (d + 1)], by simp [hd],
+             by simp [Bytecode.run_dup, hx.symm]⟩
   | un op a iha =>
     intro h heval
     simp at heval
@@ -161,7 +162,8 @@ theorem Stmt.compile_correct
           obtain ⟨snew, hsnew⟩ := List.exists_setOpt stack d v hdlt
           refine ⟨copsE ++ [Op.swap (d + 1), Op.pop], layout, snew,
                   by simp [hcoE, hd], ?_, ?_, ?_⟩
-          · rw [Bytecode.run_append, hruE]; simp [hs, hsnew]
+          · rw [Bytecode.run_append, hruE]
+            simp [Bytecode.run_swap_cons, hs, hsnew]
           · rw [List.length_setOpt hsnew, hM.length]
           · intro y
             by_cases hxy : x = y
@@ -182,6 +184,13 @@ theorem Stmt.compile_correct
     simp only [Stmt.exec] at hexec
     rw [Stmt.compile]
     exact Program.compile_correct_aux body env env' layout stack hM hexec
+  | iff cond body =>
+    -- Codegen correctness for `if`. Source semantics requires the body
+    -- (when taken) to preserve env length; the bytecode `Op.iff` requires
+    -- the body to preserve stack length. Bridging these needs a layout
+    -- invariant we don't currently maintain in `Matches`; left as a
+    -- targeted gap to address in the next checkpoint.
+    sorry
 termination_by sizeOf s
 
 theorem Program.compile_correct_aux :
@@ -196,7 +205,7 @@ theorem Program.compile_correct_aux :
   match p with
   | [] =>
     simp at hexec
-    exact ⟨[], layout, stack, rfl, rfl, hexec ▸ hM⟩
+    exact ⟨[], layout, stack, rfl, by simp, hexec ▸ hM⟩
   | s :: rest =>
     simp only [Program.exec] at hexec
     cases h1 : Stmt.exec s env with

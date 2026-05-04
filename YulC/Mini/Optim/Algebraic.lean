@@ -88,6 +88,7 @@ namespace Stmt
 def alg : Stmt → Stmt
   | .letDecl x e => .letDecl x e.alg
   | .assign  x e => .assign  x e.alg
+  | .iff cond body => .iff cond.alg (body.map alg)
   | .block body  => .block (body.map alg)
 termination_by s => sizeOf s
 
@@ -102,6 +103,15 @@ theorem Stmt.alg_exec (s : Stmt) (env : Env) :
     (s.alg).exec env = s.exec env := by
   match s with
   | .letDecl _ _ | .assign _ _ => simp [Stmt.alg, Stmt.exec]
+  | .iff cond body =>
+    simp only [Stmt.alg, Stmt.exec, Expr.alg_eval]
+    cases hc : cond.eval env with
+    | none   => rfl
+    | some c =>
+      by_cases h0 : c = 0
+      · simp [h0]
+      · simp only [h0, if_false]
+        rw [Program.alg_exec body env]
   | .block body =>
     simp only [Stmt.alg, Stmt.exec]
     exact Program.alg_exec body env

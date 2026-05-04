@@ -39,10 +39,45 @@ theorem peephole_run (p : List Op) (s : Stack) :
   | case1 _ rest ih =>
     simp [Bytecode.run, Op.step, ih]
   | case2 op rest _ ih =>
-    simp only [peephole, Bytecode.run]
-    cases hstep : op.step s with
-    | none    => rfl
-    | some s' => simp [ih]
+    -- The opcode is preserved by peephole; show both runs agree.
+    cases op with
+    | iff body =>
+      simp only [peephole]
+      cases s with
+      | nil       => simp [Bytecode.run]
+      | cons c s' =>
+        simp only [Bytecode.run]
+        split
+        · exact ih s'
+        · split
+          · split <;> simp [ih]
+          · rfl
+    | push n   => simp only [peephole, Bytecode.run, Op.step]; simp [ih]
+    | pop      =>
+      simp only [peephole, Bytecode.run]
+      cases hstep : Op.step .pop s with
+      | none    => rfl
+      | some s' => simp [ih]
+    | bin op   =>
+      simp only [peephole, Bytecode.run]
+      cases hstep : Op.step (.bin op) s with
+      | none    => rfl
+      | some s' => simp [ih]
+    | un op    =>
+      simp only [peephole, Bytecode.run]
+      cases hstep : Op.step (.un op) s with
+      | none    => rfl
+      | some s' => simp [ih]
+    | dup i    =>
+      simp only [peephole, Bytecode.run]
+      cases hstep : Op.step (.dup i) s with
+      | none    => rfl
+      | some s' => simp [ih]
+    | swap i   =>
+      simp only [peephole, Bytecode.run]
+      cases hstep : Op.step (.swap i) s with
+      | none    => rfl
+      | some s' => simp [ih]
   | case3 => rfl
 
 end Bytecode

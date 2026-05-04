@@ -61,6 +61,19 @@ mutual
     -- so a block contributes nothing beyond running its body in the
     -- enclosing scope.
     Program.exec body env
+  | .iff cond body, env =>
+    -- `if cond { body }`. Falsely-conditioned: env unchanged.
+    -- Truly-conditioned: run body, then *require* the body to be
+    -- layout-preserving (same env length out as in). This rules out
+    -- `letDecl`s inside the body and matches the bytecode's
+    -- structured `Op.iff` constraint.
+    match cond.eval env with
+    | none   => none
+    | some c =>
+      if c = 0 then some env
+      else match Program.exec body env with
+           | some env' => if env'.length = env.length then some env' else none
+           | none      => none
 
 @[simp] def Program.exec : Program → Env → Option Env
   | [],        env => some env

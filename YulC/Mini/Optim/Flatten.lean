@@ -29,6 +29,7 @@ flatten every sub-statement and concatenate any inner blocks. -/
 def flatten : Stmt → Stmt
   | .letDecl x e => .letDecl x e
   | .assign  x e => .assign  x e
+  | .iff cond body  => .iff cond (body.flatMap flattenOne)
   | .block body  => .block (body.flatMap flattenOne)
 where
   /-- A single statement after flattening, exposed as the list of
@@ -36,6 +37,7 @@ where
   flattenOne : Stmt → List Stmt
     | .letDecl x e => [.letDecl x e]
     | .assign  x e => [.assign  x e]
+    | .iff cond body => [.iff cond (body.flatMap flattenOne)]
     | .block body  => body.flatMap flattenOne
 termination_by s => sizeOf s
 
@@ -85,6 +87,19 @@ theorem flattenOne_exec (s : Stmt) (env : Env) :
   match s with
   | .letDecl _ _ | .assign _ _ =>
     simp only [flatten.flattenOne]; exact singleton_exec _ env
+  | .iff cond body =>
+    simp only [flatten.flattenOne]
+    rw [singleton_exec]
+    show Stmt.exec (.iff cond (body.flatMap flatten.flattenOne)) env =
+         Stmt.exec (.iff cond body) env
+    simp only [Stmt.exec]
+    cases hc : cond.eval env with
+    | none   => rfl
+    | some c =>
+      by_cases h0 : c = 0
+      · simp [h0]
+      · simp only [h0, if_false]
+        rw [flatMap_flattenOne_exec body env]
   | .block body =>
     simp only [flatten.flattenOne, Stmt.exec]
     exact flatMap_flattenOne_exec body env
@@ -110,6 +125,15 @@ theorem flatten_exec (s : Stmt) (env : Env) :
     (s.flatten).exec env = s.exec env := by
   match s with
   | .letDecl _ _ | .assign _ _ => simp [Stmt.flatten, Stmt.exec]
+  | .iff cond body =>
+    simp only [Stmt.flatten, Stmt.exec]
+    cases hc : cond.eval env with
+    | none   => rfl
+    | some c =>
+      by_cases h0 : c = 0
+      · simp [h0]
+      · simp only [h0, if_false]
+        rw [flatMap_flattenOne_exec body env]
   | .block body =>
     simp only [Stmt.flatten, Stmt.exec]
     exact flatMap_flattenOne_exec body env

@@ -64,6 +64,7 @@ into nested blocks. -/
 def fold : Stmt → Stmt
   | .letDecl x e => .letDecl x e.fold
   | .assign  x e => .assign  x e.fold
+  | .iff cond body => .iff cond.fold (body.map fold)
   | .block body  => .block (body.map fold)
 termination_by s => sizeOf s
 
@@ -80,6 +81,15 @@ theorem Stmt.fold_exec (s : Stmt) (env : Env) :
     (s.fold).exec env = s.exec env := by
   match s with
   | .letDecl _ _ | .assign _ _ => simp [Stmt.fold, Stmt.exec]
+  | .iff cond body =>
+    simp only [Stmt.fold, Stmt.exec, Expr.fold_eval]
+    cases hc : cond.eval env with
+    | none   => rfl
+    | some c =>
+      by_cases h0 : c = 0
+      · simp [h0]
+      · simp only [h0, if_false]
+        rw [Program.fold_exec body env]
   | .block body =>
     simp only [Stmt.fold, Stmt.exec]
     exact Program.fold_exec body env

@@ -291,7 +291,7 @@ different opcode sequences, but both are provably correct against the
 same source semantics. -/
 
 /-- Compact textual rendering of a single opcode. -/
-def Op.pretty : Op → String
+partial def Op.pretty : Op → String
   | .push n  => s!"PUSH {n.toNat}"
   | .bin .add => "ADD"
   | .bin .sub => "SUB"
@@ -308,6 +308,9 @@ def Op.pretty : Op → String
   | .dup i   => s!"DUP{i}"
   | .swap i  => s!"SWAP{i}"
   | .pop     => "POP"
+  | .iff body =>
+    let inside := String.intercalate " " (body.map Op.pretty)
+    "IFF[" ++ inside ++ "]"
 
 /-- Render a bytecode sequence as a newline-separated listing. -/
 def prettyBytecode (ops : List Op) : String :=
@@ -364,5 +367,28 @@ example :
 -- Inspect the two outputs interactively:
 --   #eval IO.println (showCompile (Program.compile demoOpt []))
 --   #eval IO.println (showCompile (compileOptimized demoOpt))
+
+/-! ### Smoke test: structured `if`
+
+A minimal program using the new `Stmt.iff` construct: declare `a := 1`
+and `b := 0`, then conditionally update `b` inside an `if` whose body
+is layout-preserving (no `letDecl`s). The optimised pipeline emits the
+new structured `Op.iff` opcode wrapping the body. -/
+
+def demoIff : Program :=
+  [ .letDecl "a" (.lit 1),
+    .letDecl "b" (.lit 0),
+    .iff (.var "a") [ .assign "b" (.lit 7) ] ]
+
+/-- The bytecode for `demoIff`: the body is encoded as a structured
+`IFF[…]` opcode wrapping the body's straight-line code. -/
+example : showCompile (Program.compile demoIff []) =
+"PUSH 1
+PUSH 0
+DUP2
+IFF[PUSH 7 SWAP1 POP]" := by native_decide
+
+/-- Source-level execution of `demoIff` produces `b = 7`. -/
+example : Program.exec demoIff [] = some [("b", 7), ("a", 1)] := by decide
 
 end YulC.Mini

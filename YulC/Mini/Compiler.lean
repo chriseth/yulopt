@@ -123,6 +123,17 @@ mutual
   | .block body, l =>
     -- Block as syntactic grouping: compile-equivalent to inlining the body.
     Program.compile body l
+  | .iff cond body, l =>
+    match cond.compile l with
+    | none    => none
+    | some cc =>
+      match Program.compile body l with
+      | none           => none
+      | some (cb, lb) =>
+        -- The body must be layout-preserving; we enforce equality of
+        -- layouts which (combined with the bytecode `Op.iff` semantics)
+        -- guarantees the stack is restored after a taken branch.
+        if lb = l then some (cc ++ [Op.iff cb], l) else none
 
 @[simp] def Program.compile : Program → Layout → Option (List Op × Layout)
   | [],        l => some ([], l)
