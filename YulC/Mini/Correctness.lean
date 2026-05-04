@@ -3,6 +3,8 @@ import YulC.Mini.Syntax
 import YulC.Mini.Semantics
 import YulC.Mini.Evm
 import YulC.Mini.Compiler
+import YulC.Mini.Optim
+import YulC.Mini.Optim.Peephole
 
 /-!
 # Correctness of the mini compiler
@@ -228,5 +230,45 @@ theorem Program.compile_correct
       Matches env' layout' stack' := by
   intro hexec
   exact Program.compile_correct_aux p [] env' [] [] Matches.empty hexec
+
+/-! ## End-to-end *optimised* pipeline (Yul → optimised bytecode)
+
+`compileOptimized` runs the full verified pipeline:
+
+    Yul source
+      → optimize           (flatten, fold, algebraic — `YulC.Mini.Optim`)
+      → Program.compile    (codegen — above)
+      → Bytecode.peephole  (PUSH; POP cancellation — `Optim.Peephole`)
+
+The headline theorem `compileOptimized_correct` is the optimised
+counterpart of `Program.compile_correct`: the same `Matches`
+postcondition, but for the optimised bytecode. -/
+
+/-- Optimise, compile, then peephole-rewrite the resulting bytecode. -/
+def compileOptimized (p : Program) : Option (List Op × Layout) :=
+  match Program.compile (optimize p) [] with
+  | some (ops, layout') => some (Bytecode.peephole ops, layout')
+  | none                => none
+
+/-- **End-to-end optimised compiler correctness.**
+
+If the source program runs to environment `env'`, then the optimised
+bytecode (post-peephole) runs on the empty stack to a stack matching
+`env'` via `Matches`. Proof: `optimize_exec` preserves semantics, so
+apply `Program.compile_correct` to the optimised program and commute
+through `Bytecode.peephole_run`. -/
+theorem compileOptimized_correct (p : Program) (env' : Env)
+    (hexec : Program.exec p [] = some env') :
+    ∃ ops layout' stack',
+      compileOptimized p = some (ops, layout') ∧
+      Bytecode.run ops [] = some stack' ∧
+      Matches env' layout' stack' := by
+  have hexec' : Program.exec (optimize p) [] = some env' := by
+    rw [optimize_exec]; exact hexec
+  obtain ⟨ops, layout', stack', hcomp, hrun, hM⟩ :=
+    Program.compile_correct (optimize p) env' hexec'
+  refine ⟨Bytecode.peephole ops, layout', stack', ?_, ?_, hM⟩
+  · simp [compileOptimized, hcomp]
+  · rw [Bytecode.peephole_run]; exact hrun
 
 end YulC.Mini

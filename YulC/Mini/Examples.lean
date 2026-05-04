@@ -282,4 +282,87 @@ example :
   apply compileOptimized_correct
   decide
 
+/-! ### Bytecode showcase: optimizer in action
+
+A short, human-readable pretty-printer for `Op`, plus an end-to-end
+demo that prints the bytecode emitted by both the unoptimised and the
+optimised pipelines on the same source program. The two produce
+different opcode sequences, but both are provably correct against the
+same source semantics. -/
+
+/-- Compact textual rendering of a single opcode. -/
+def Op.pretty : Op → String
+  | .push n  => s!"PUSH {n.toNat}"
+  | .bin .add => "ADD"
+  | .bin .sub => "SUB"
+  | .bin .mul => "MUL"
+  | .bin .div => "DIV"
+  | .bin .mod => "MOD"
+  | .bin .and => "AND"
+  | .bin .or  => "OR"
+  | .bin .xor => "XOR"
+  | .bin .lt  => "LT"
+  | .bin .gt  => "GT"
+  | .bin .eq  => "EQ"
+  | .un  .iszero => "ISZERO"
+  | .dup i   => s!"DUP{i}"
+  | .swap i  => s!"SWAP{i}"
+  | .pop     => "POP"
+
+/-- Render a bytecode sequence as a newline-separated listing. -/
+def prettyBytecode (ops : List Op) : String :=
+  String.intercalate "\n" (ops.map Op.pretty)
+
+/-- Helper that runs a (possibly failing) compilation and returns just
+the opcode list, pretty-printed. -/
+def showCompile (mr : Option (List Op × Layout)) : String :=
+  match mr with
+  | none           => "<compilation failed>"
+  | some (ops, _)  => prettyBytecode ops
+
+/-- A program that exercises both Yul-level passes and the bytecode
+peephole pass:
+
+* `mul(2, 3)` is **constant-folded** to `6`.
+* `mul(a, 1)` is **algebraically simplified** to `a`.
+* The resulting `add(6, a)` becomes a small straight-line snippet,
+  and the `peephole` pass collapses any spurious `PUSH; POP` pairs
+  the codegen happens to emit. -/
+def demoOpt : Program :=
+  [ .letDecl "a" (.lit 4),
+    .letDecl "x" (.bin .add (.bin .mul (.lit 2) (.lit 3))
+                            (.bin .mul (.var "a") (.lit 1))) ]
+
+/-- Naive (unoptimised) bytecode for `demoOpt`. -/
+example : showCompile (Program.compile demoOpt []) =
+"PUSH 4
+PUSH 2
+PUSH 3
+MUL
+DUP2
+PUSH 1
+MUL
+ADD" := by native_decide
+
+/-- Optimised bytecode for `demoOpt`: the multiplications are gone. -/
+example : showCompile (compileOptimized demoOpt) =
+"PUSH 4
+PUSH 6
+DUP2
+ADD" := by native_decide
+
+/-- Both versions agree with the source semantics — and `compileOptimized`
+is verified to do so for *every* program (`compileOptimized_correct`). -/
+example :
+    ∃ ops layout' stack',
+      compileOptimized demoOpt = some (ops, layout') ∧
+      Bytecode.run ops [] = some stack' ∧
+      Matches [("x", 10), ("a", 4)] layout' stack' := by
+  apply compileOptimized_correct
+  decide
+
+-- Inspect the two outputs interactively:
+--   #eval IO.println (showCompile (Program.compile demoOpt []))
+--   #eval IO.println (showCompile (compileOptimized demoOpt))
+
 end YulC.Mini

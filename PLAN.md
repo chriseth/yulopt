@@ -659,8 +659,9 @@ YulC/Mini/
 ```
 
 Dependency DAG (strictly layered): Util → Syntax → Semantics  Evm →
-Compiler → Correctness → Parser; Optim/* depend on Syntax + Semantics
-only; Optim composes them; Examples depends on everything.
+Compiler → Optim/* (Syntax + Semantics only) → Optim (Yul-level
+composition) → Correctness (codegen + end-to-end optimised pipeline) →
+Parser; Examples depends on everything.
 
 ### Main theorems
 
