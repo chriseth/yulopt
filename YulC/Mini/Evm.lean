@@ -117,6 +117,22 @@ decreasing_by
     Bytecode.run (.pop :: rest) [] = none := by
   simp [run, Op.step]
 
+/-- Unfold `run` on `Op.iff` when the condition is zero (false branch). -/
+@[simp] theorem run_iff_cons_zero (body rest : List Op) (c : Word) (s : Stack)
+    (h : c = 0) :
+    Bytecode.run (.iff body :: rest) (c :: s) = Bytecode.run rest s := by
+  simp only [Bytecode.run, h]; rfl
+
+/-- Unfold `run` on `Op.iff` when the condition is non-zero (true branch).
+The body must be stack-balanced. -/
+theorem run_iff_cons_nonzero (body rest : List Op) (c : Word) (s : Stack)
+    (h : c ≠ 0) :
+    Bytecode.run (.iff body :: rest) (c :: s) =
+      match Bytecode.run body s with
+      | some s' => if s'.length = s.length then Bytecode.run rest s' else none
+      | none    => none := by
+  simp only [Bytecode.run, h, if_false]
+
 /-- Running `k` `POP` instructions drops `k` elements from the stack
 (when the stack is at least `k` deep). -/
 theorem run_replicate_pop (k : Nat) (s : Stack) (h : k ≤ s.length) :

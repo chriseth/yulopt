@@ -175,6 +175,18 @@ theorem Sim.toMatches {env l s} (h : Sim env l s) : Matches env l s := by
   refine ⟨by rw [hl, hs]; simp, ?_⟩
   intro x; rw [hl, hs]; exact Env.lookup_via_map env x
 
+/-- Length of any `Sim`-related stack equals layout length. -/
+theorem Sim.length_eq {env l s} (h : Sim env l s) : s.length = l.length := by
+  rw [h.1, h.2]; simp
+
+/-- Layout length equals env length under `Sim`. -/
+theorem Sim.layout_length {env l s} (h : Sim env l s) : l.length = env.length := by
+  rw [h.1]; simp
+
+/-- Stack length equals env length under `Sim`. -/
+theorem Sim.stack_length {env l s} (h : Sim env l s) : s.length = env.length := by
+  rw [h.2]; simp
+
 /-- The value-update lemma at the level of the `map snd` projection:
 `update` corresponds to `setOpt` at the `depth` of the matching name. -/
 theorem Env.update_map_snd {env env' : Env} {x : Ident} {v : Word} {d : Nat}
@@ -288,7 +300,50 @@ termination_by sizeOf p
 
 end
 
-/-! ### Statement compile-correctness with `Sim` -/
+/-- **Scope-exit lemma**: If executing `body` from `env` extends to `envI`
+under `Sim`, then dropping the inner-binding extension restores `Sim` at
+the outer layout/stack. This is the structural invariant shared by
+`block` and the truly-conditioned `iff` branch. -/
+theorem Sim.scope_exit {env envI : Env} {layout lB : Layout}
+    {stack stackB : Stack} {body : Program}
+    (hS  : Sim env layout stack) (hSB : Sim envI lB stackB)
+    (hb  : Program.exec body env = some envI) :
+    Sim (envI.drop (envI.length - env.length)) layout
+        (stackB.drop (envI.length - env.length)) := by
+  obtain ⟨k', hk', hnames⟩ := Program.exec_ext body hb
+  have hk_eq : envI.length - env.length = k' := by omega
+  refine ⟨?_, ?_⟩
+  · rw [hk_eq, hS.1]; exact map_some_fst_eq hnames.symm
+  · rw [hSB.2, ← List.map_drop]
+
+/-- The "scope size" — number of fresh inner bindings — equals the layout
+extension produced by compilation. -/
+theorem Sim.scope_size {env envI : Env} {layout lB : Layout} {stack stackB : Stack}
+    (hS : Sim env layout stack) (hSB : Sim envI lB stackB) :
+    lB.length - layout.length = envI.length - env.length := by
+  rw [hSB.layout_length, hS.layout_length]
+
+/-- After running the body, the inner stack is at least as deep as the
+outer one. -/
+theorem Sim.scope_size_le {env envI : Env} {layout lB : Layout} {stack stackB : Stack}
+    {body : Program}
+    (hS : Sim env layout stack) (hSB : Sim envI lB stackB)
+    (hb : Program.exec body env = some envI) :
+    lB.length - layout.length ≤ stackB.length := by
+  obtain ⟨k, hk, _⟩ := Program.exec_ext body hb
+  rw [hS.scope_size hSB, hSB.stack_length]; omega
+
+/-- After dropping the scope-extension from the inner stack, length
+equals the outer stack length. -/
+theorem Sim.scope_drop_length {env envI : Env} {layout lB : Layout}
+    {stack stackB : Stack} {body : Program}
+    (hS : Sim env layout stack) (hSB : Sim envI lB stackB)
+    (hb : Program.exec body env = some envI) :
+    (stackB.drop (lB.length - layout.length)).length = stack.length := by
+  rw [List.length_drop, hSB.stack_length, hS.scope_size hSB,
+      hS.length_eq, hS.layout_length]
+  obtain ⟨k, hk, _⟩ := Program.exec_ext body hb
+  omega
 
 mutual
 
@@ -356,38 +411,16 @@ theorem Stmt.compile_correct
     | none      => rw [hb] at hexec; simp at hexec
     | some envI =>
       rw [hb] at hexec; simp only at hexec
+      obtain rfl : env' = envI.drop (envI.length - env.length) := by
+        simpa using hexec.symm
       obtain ⟨opsB, lB, stackB, hcoB, hruB, hSB⟩ :=
         Program.compile_correct_aux body env envI layout stack hS hb
-      -- Layout extension and length facts.
-      have hLext : lB = envI.map (fun e => some e.fst) := hSB.1
-      have hSext : stackB = envI.map Prod.snd := hSB.2
-      have henvLen : envI.length ≥ env.length := by
-        obtain ⟨k, hk, _⟩ := Program.exec_ext body hb
-        omega
-      have hkEq : lB.length - layout.length = envI.length - env.length := by
-        rw [hLext, hS.1]; simp
-      have hStackLen : stackB.length = envI.length := by
-        rw [hSext]; simp
-      have hkBound : lB.length - layout.length ≤ stackB.length := by
-        rw [hStackLen, hkEq]; omega
-      -- Compile target.
       refine ⟨opsB ++ List.replicate (lB.length - layout.length) Op.pop,
-              layout, stackB.drop (lB.length - layout.length),
-              ?_, ?_, ?_⟩
+              layout, stackB.drop (lB.length - layout.length), ?_, ?_, ?_⟩
       · simp only [Stmt.compile, hcoB]
       · rw [Bytecode.run_append, hruB]
-        simp [Bytecode.run_replicate_pop _ _ hkBound]
-      · obtain rfl : env' = envI.drop (envI.length - env.length) := by
-          simpa using hexec.symm
-        refine ⟨?_, ?_⟩
-        · obtain ⟨k', hk', hnames⟩ := Program.exec_ext body hb
-          have hk_eq : envI.length - env.length = k' := by omega
-          rw [hk_eq, hS.1]
-          exact map_some_fst_eq hnames.symm
-        · rw [hSext]
-          obtain ⟨k', hk', _⟩ := Program.exec_ext body hb
-          have hk_eq : envI.length - env.length = k' := by omega
-          rw [hkEq, hk_eq, ← List.map_drop]
+        simp [Bytecode.run_replicate_pop _ _ (hS.scope_size_le hSB hb)]
+      · rw [hS.scope_size hSB]; exact hS.scope_exit hSB hb
   | iff cond body =>
     simp only [Stmt.exec] at hexec
     cases hc : cond.eval env with
@@ -402,59 +435,36 @@ theorem Stmt.compile_correct
           Expr.compile_correct cond env layout stack c hS.toMatches hc
         obtain ⟨opsB, lB, stackB, hcoB, hruB, hSB⟩ :=
           Program.compile_correct_aux body env envI layout stack hS hb
-        have hLext : lB = envI.map (fun e => some e.fst) := hSB.1
-        have hSext : stackB = envI.map Prod.snd := hSB.2
-        have henvLen : envI.length ≥ env.length := by
-          obtain ⟨k, hk, _⟩ := Program.exec_ext body hb
-          omega
-        have hkEq : lB.length - layout.length = envI.length - env.length := by
-          rw [hLext, hS.1]; simp
-        have hStackLen : stackB.length = envI.length := by
-          rw [hSext]; simp
-        have hkBound : lB.length - layout.length ≤ stackB.length := by
-          rw [hStackLen, hkEq]; omega
-        have hLenStack : stack.length = layout.length := by
-          rw [hS.1, hS.2]; simp
+        have hkBound : lB.length - layout.length ≤ stackB.length :=
+          hS.scope_size_le hSB hb
         have hLenDrop :
-            (stackB.drop (lB.length - layout.length)).length = stack.length := by
-          rw [List.length_drop, hStackLen, hkEq, hLenStack, hS.1]
-          simp; omega
+            (stackB.drop (lB.length - layout.length)).length = stack.length :=
+          hS.scope_drop_length hSB hb
+        have hkk : lB.length - layout.length = envI.length - env.length :=
+          hS.scope_size hSB
         by_cases hcz : c = 0
-        · -- c = 0 branch: body bytecode is emitted but skipped at runtime.
+        · -- false branch: env unchanged at runtime
           simp [hcz] at hexec; subst hexec
           refine ⟨copsC ++ [Op.iff (opsB ++ List.replicate
-                                      (lB.length - layout.length) Op.pop)],
+                                     (lB.length - layout.length) Op.pop)],
                   layout, stack, ?_, ?_, hS⟩
           · simp only [Stmt.compile, hcoC, hcoB]
-          · rw [Bytecode.run_append, hruC]
-            show Bytecode.run [Op.iff _] (c :: stack) = some stack
-            simp [Bytecode.run, hcz]
-        · -- c ≠ 0 branch: body bytecode runs.
+          · simp only [Bytecode.run_append, hruC,
+                Bytecode.run_iff_cons_zero _ _ _ _ hcz, Bytecode.run_nil]
+        · -- true branch: body runs, scope-exit drops fresh bindings
           rw [if_neg hcz] at hexec
           obtain rfl : env' = envI.drop (envI.length - env.length) := by
             simpa using hexec.symm
-          refine ⟨copsC ++
-                  [Op.iff (opsB ++ List.replicate (lB.length - layout.length)
-                                                  Op.pop)],
-                  layout, stackB.drop (lB.length - layout.length), ?_, ?_, ?_⟩
+          refine ⟨copsC ++ [Op.iff (opsB ++ List.replicate
+                                     (lB.length - layout.length) Op.pop)],
+                  layout, stackB.drop (lB.length - layout.length),
+                  ?_, ?_, ?_⟩
           · simp only [Stmt.compile, hcoC, hcoB]
-          · rw [Bytecode.run_append, hruC]
-            show Bytecode.run [Op.iff _] (c :: stack) =
-                 some (stackB.drop (lB.length - layout.length))
-            simp only [Bytecode.run, hcz, if_false]
-            rw [Bytecode.run_append, hruB]
-            dsimp only
-            rw [Bytecode.run_replicate_pop _ _ hkBound]
-            simp [hLenDrop]
-          · refine ⟨?_, ?_⟩
-            · obtain ⟨k', hk', hnames⟩ := Program.exec_ext body hb
-              have hk_eq : envI.length - env.length = k' := by omega
-              rw [hk_eq, hS.1]
-              exact map_some_fst_eq hnames.symm
-            · rw [hSext]
-              obtain ⟨k', hk', _⟩ := Program.exec_ext body hb
-              have hk_eq : envI.length - env.length = k' := by omega
-              rw [hkEq, hk_eq, ← List.map_drop]
+          · simp only [Bytecode.run_append, hruC,
+                Bytecode.run_iff_cons_nonzero _ _ _ _ hcz,
+                hruB, Bytecode.run_replicate_pop _ _ hkBound, hLenDrop, if_true,
+                Bytecode.run_nil]
+          · rw [hkk]; exact hS.scope_exit hSB hb
 termination_by sizeOf s
 
 theorem Program.compile_correct_aux
