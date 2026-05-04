@@ -11,6 +11,7 @@ A tiny recursive-descent parser for the supported Yul subset.
 program ::= "{" stmt* "}" | stmt*
 stmt    ::= "let" ident ":=" expr
           | ident ":=" expr
+          | "if" expr "{" stmt* "}"
           | "{" stmt* "}"
 expr    ::= literal
           | ident
@@ -151,6 +152,7 @@ private partial def parseExpr (s : Stream) : Except ParseError (Expr × Stream) 
     else if isIdStart c then
       let (name, s1) ← parseIdentRaw s
       if name = "let" then .error "unexpected keyword 'let' in expression" else
+      if name = "if"  then .error "unexpected keyword 'if' in expression"  else
       -- Might be a variable reference, or a builtin call `name(...)`.
       match consume "(" s1 with
       | some s2 =>
@@ -193,6 +195,29 @@ private partial def parseStmt (s : Stream) : Except ParseError (Stmt × Stream) 
     | '}' :: tail => return (.block stmts, tail)
     | _ => .error "expected '}' to close block"
   | _ =>
+  match consume "if" s with
+  | some s1 =>
+    match s1 with
+    | c :: _ =>
+      if isIdCont c then
+        -- "if" was a prefix of a longer identifier; fall through.
+        parseLetOrAssign s
+      else
+        let (cond, s2) ← parseExpr s1
+        let s3 := skipWS s2
+        match s3 with
+        | '{' :: rest =>
+          let (body, rest') ← parseStmts [] rest
+          let rest' := skipWS rest'
+          match rest' with
+          | '}' :: tail => return (.iff cond body, tail)
+          | _ => .error "expected '}' to close `if` body"
+        | _ => .error "expected '{' after `if` condition"
+    | [] => .error "unexpected end of input after 'if'"
+  | none => parseLetOrAssign s
+
+private partial def parseLetOrAssign (s : Stream) :
+    Except ParseError (Stmt × Stream) := do
   match consume "let" s with
   | some s1 =>
     -- Make sure "let" wasn't actually the prefix of a longer ident.
@@ -223,6 +248,7 @@ private partial def parseAssign (s : Stream) :
     Except ParseError (Stmt × Stream) := do
   let (x, s1) ← parseIdentRaw s
   if x = "let" then .error "unexpected keyword 'let'" else
+  if x = "if"  then .error "unexpected keyword 'if'"  else
   let s2 ← expect ":=" s1
   let (e, s3) ← parseExpr s2
   return (.assign x e, s3)

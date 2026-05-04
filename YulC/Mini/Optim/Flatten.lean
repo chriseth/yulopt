@@ -38,13 +38,13 @@ where
     | .letDecl x e => [.letDecl x e]
     | .assign  x e => [.assign  x e]
     | .iff cond body => [.iff cond (body.flatMap flattenOne)]
-    | .block body  => body.flatMap flattenOne
+    | .block body  => [.block (body.flatMap flattenOne)]
 termination_by s => sizeOf s
 
 end Stmt
 
-/-- Program-level flattening: also drops outer `block` wrappers,
-since a `block` at the program top is pure grouping. -/
+/-- Program-level flattening: recurses into nested blocks/ifs. Block
+boundaries are preserved because they introduce a fresh scope. -/
 def progFlatten (p : Program) : Program :=
   p.flatMap Stmt.flatten.flattenOne
 
@@ -101,8 +101,11 @@ theorem flattenOne_exec (s : Stmt) (env : Env) :
       · simp only [h0, if_false]
         rw [flatMap_flattenOne_exec body env]
   | .block body =>
-    simp only [flatten.flattenOne, Stmt.exec]
-    exact flatMap_flattenOne_exec body env
+    simp only [flatten.flattenOne]
+    rw [singleton_exec]
+    show Stmt.exec (.block (body.flatMap flatten.flattenOne)) env =
+         Stmt.exec (.block body) env
+    simp only [Stmt.exec, flatMap_flattenOne_exec body env]
 termination_by sizeOf s
 
 theorem flatMap_flattenOne_exec (p : Program) (env : Env) :
@@ -135,8 +138,7 @@ theorem flatten_exec (s : Stmt) (env : Env) :
       · simp only [h0, if_false]
         rw [flatMap_flattenOne_exec body env]
   | .block body =>
-    simp only [Stmt.flatten, Stmt.exec]
-    exact flatMap_flattenOne_exec body env
+    simp only [Stmt.flatten, Stmt.exec, flatMap_flattenOne_exec body env]
 
 end Stmt
 

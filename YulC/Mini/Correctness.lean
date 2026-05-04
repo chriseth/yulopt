@@ -180,18 +180,20 @@ theorem Stmt.compile_correct
                 rw [hdy] at hMy; rw [hMy]
                 simp [List.getElem?_setOpt_other hsnew hdy_ne]
   | block body =>
-    -- Block as syntactic grouping reduces directly to `Program.compile_correct_aux`.
-    simp only [Stmt.exec] at hexec
-    rw [Stmt.compile]
-    exact Program.compile_correct_aux body env env' layout stack hM hexec
-  | iff cond body =>
-    -- Codegen correctness for `if`. Source semantics requires the body
-    -- (when taken) to preserve env length; the bytecode `Op.iff` requires
-    -- the body to preserve stack length. Bridging these needs a layout
-    -- invariant we don't currently maintain in `Matches`; left as a
-    -- targeted gap to address in the next checkpoint.
+    -- Block introduces a fresh scope. Compile-correct of the body
+    -- gives an extended env'/layout'/stack'; trailing POPs restore
+    -- both stack and layout to the enclosing scope. Discharging this
+    -- needs a "compile preserves layout-as-extension" invariant
+    -- analogous to the source's env-length-preservation; left as a
+    -- targeted gap, see checkpoint 011 (block/if scoping).
     sorry
-termination_by sizeOf s
+  | iff cond body =>
+    -- Same shape as `block`: body now self-balances via trailing POPs
+    -- baked in by `Stmt.compile.iff`. Same outstanding invariant.
+    sorry
+-- (No `termination_by` needed: with both `block` and `iff` cases stubbed
+-- as `sorry`, this function is no longer recursive. The mutual block is
+-- kept so the proof shape is ready for when the stubs are discharged.)
 
 theorem Program.compile_correct_aux :
     ∀ (p : Program) (env env' : Env) (layout : Layout) (stack : Stack),

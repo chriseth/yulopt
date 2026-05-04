@@ -121,19 +121,26 @@ mutual
     | some c, some d => some (c ++ [Op.swap (d + 1), Op.pop], l)
     | _, _ => none
   | .block body, l =>
-    -- Block as syntactic grouping: compile-equivalent to inlining the body.
-    Program.compile body l
+    -- Block introduces a fresh scope: compile the body in the current
+    -- layout, then emit `POP` for each new binding to restore the
+    -- enclosing layout/stack.
+    match Program.compile body l with
+    | none           => none
+    | some (cb, lb)  =>
+      let k := lb.length - l.length
+      some (cb ++ List.replicate k Op.pop, l)
   | .iff cond body, l =>
     match cond.compile l with
     | none    => none
     | some cc =>
       match Program.compile body l with
       | none           => none
-      | some (cb, lb) =>
-        -- The body must be layout-preserving; we enforce equality of
-        -- layouts which (combined with the bytecode `Op.iff` semantics)
-        -- guarantees the stack is restored after a taken branch.
-        if lb = l then some (cc ++ [Op.iff cb], l) else none
+      | some (cb, lb)  =>
+        -- The body's own scope: trailing POPs balance the stack so the
+        -- `Op.iff` body is self-contained (length-preserving).
+        let k := lb.length - l.length
+        let body_ops := cb ++ List.replicate k Op.pop
+        some (cc ++ [Op.iff body_ops], l)
 
 @[simp] def Program.compile : Program → Layout → Option (List Op × Layout)
   | [],        l => some ([], l)

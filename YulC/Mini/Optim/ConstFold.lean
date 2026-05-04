@@ -91,8 +91,7 @@ theorem Stmt.fold_exec (s : Stmt) (env : Env) :
       · simp only [h0, if_false]
         rw [Program.fold_exec body env]
   | .block body =>
-    simp only [Stmt.fold, Stmt.exec]
-    exact Program.fold_exec body env
+    simp only [Stmt.fold, Stmt.exec, Program.fold_exec body env]
 termination_by sizeOf s
 
 theorem Program.fold_exec (p : Program) (env : Env) :

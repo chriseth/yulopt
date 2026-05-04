@@ -56,23 +56,21 @@ mutual
     | some v => Env.update env x v
     | none   => none
   | .block body, env =>
-    -- Block as syntactic grouping (post-disambiguator semantics): the
-    -- no-shadowing `letDecl` rule already prevents accidental capture,
-    -- so a block contributes nothing beyond running its body in the
-    -- enclosing scope.
-    Program.exec body env
+    -- Block introduces a fresh scope: bindings declared inside are
+    -- visible only until the block ends, then dropped from `env`.
+    match Program.exec body env with
+    | some env' => some (env'.drop (env'.length - env.length))
+    | none      => none
   | .iff cond body, env =>
     -- `if cond { body }`. Falsely-conditioned: env unchanged.
-    -- Truly-conditioned: run body, then *require* the body to be
-    -- layout-preserving (same env length out as in). This rules out
-    -- `letDecl`s inside the body and matches the bytecode's
-    -- structured `Op.iff` constraint.
+    -- Truly-conditioned: run body in a nested scope; bindings declared
+    -- inside the body are dropped on exit (matches Yul scoping).
     match cond.eval env with
     | none   => none
     | some c =>
       if c = 0 then some env
       else match Program.exec body env with
-           | some env' => if env'.length = env.length then some env' else none
+           | some env' => some (env'.drop (env'.length - env.length))
            | none      => none
 
 @[simp] def Program.exec : Program → Env → Option Env

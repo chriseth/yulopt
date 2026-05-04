@@ -113,8 +113,7 @@ theorem Stmt.alg_exec (s : Stmt) (env : Env) :
       · simp only [h0, if_false]
         rw [Program.alg_exec body env]
   | .block body =>
-    simp only [Stmt.alg, Stmt.exec]
-    exact Program.alg_exec body env
+    simp only [Stmt.alg, Stmt.exec, Program.alg_exec body env]
 termination_by sizeOf s
 
 theorem Program.alg_exec (p : Program) (env : Env) :
