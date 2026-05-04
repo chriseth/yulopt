@@ -87,9 +87,8 @@ theorem Stmt.fold_exec (s : Stmt) (env : Env) :
     | none   => rfl
     | some c =>
       by_cases h0 : c = 0
-      · simp [h0]
-      · simp only [h0, if_false]
-        rw [Program.fold_exec body env]
+      · simp [h0, Program.fold_exec body env]
+      · simp only [h0, if_false, Program.fold_exec body env]
   | .block body =>
     simp only [Stmt.fold, Stmt.exec, Program.fold_exec body env]
 termination_by sizeOf s

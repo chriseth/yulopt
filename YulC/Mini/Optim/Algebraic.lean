@@ -109,9 +109,8 @@ theorem Stmt.alg_exec (s : Stmt) (env : Env) :
     | none   => rfl
     | some c =>
       by_cases h0 : c = 0
-      · simp [h0]
-      · simp only [h0, if_false]
-        rw [Program.alg_exec body env]
+      · simp [h0, Program.alg_exec body env]
+      · simp only [h0, if_false, Program.alg_exec body env]
   | .block body =>
     simp only [Stmt.alg, Stmt.exec, Program.alg_exec body env]
 termination_by sizeOf s

@@ -117,6 +117,19 @@ decreasing_by
     Bytecode.run (.pop :: rest) [] = none := by
   simp [run, Op.step]
 
+/-- Running `k` `POP` instructions drops `k` elements from the stack
+(when the stack is at least `k` deep). -/
+theorem run_replicate_pop (k : Nat) (s : Stack) (h : k ≤ s.length) :
+    Bytecode.run (List.replicate k Op.pop) s = some (s.drop k) := by
+  induction k generalizing s with
+  | zero => simp
+  | succ n ih =>
+    cases s with
+    | nil => simp at h
+    | cons a rest =>
+      simp only [List.replicate, List.drop, run_pop_cons]
+      exact ih rest (by simpa using h)
+
 theorem run_dup (i : Nat) (rest : List Op) (s : Stack) :
     Bytecode.run (.dup i :: rest) s =
       match s[i - 1]? with

@@ -97,9 +97,8 @@ theorem flattenOne_exec (s : Stmt) (env : Env) :
     | none   => rfl
     | some c =>
       by_cases h0 : c = 0
-      · simp [h0]
-      · simp only [h0, if_false]
-        rw [flatMap_flattenOne_exec body env]
+      · simp [h0, flatMap_flattenOne_exec body env]
+      · simp only [h0, if_false, flatMap_flattenOne_exec body env]
   | .block body =>
     simp only [flatten.flattenOne]
     rw [singleton_exec]
@@ -134,9 +133,8 @@ theorem flatten_exec (s : Stmt) (env : Env) :
     | none   => rfl
     | some c =>
       by_cases h0 : c = 0
-      · simp [h0]
-      · simp only [h0, if_false]
-        rw [flatMap_flattenOne_exec body env]
+      · simp [h0, flatMap_flattenOne_exec body env]
+      · simp only [h0, if_false, flatMap_flattenOne_exec body env]
   | .block body =>
     simp only [Stmt.flatten, Stmt.exec, flatMap_flattenOne_exec body env]
 

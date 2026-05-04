@@ -62,16 +62,20 @@ mutual
     | some env' => some (env'.drop (env'.length - env.length))
     | none      => none
   | .iff cond body, env =>
-    -- `if cond { body }`. Falsely-conditioned: env unchanged.
-    -- Truly-conditioned: run body in a nested scope; bindings declared
-    -- inside the body are dropped on exit (matches Yul scoping).
+    -- `if cond { body }`. Body is statically checked (run in nested
+    -- scope) regardless of `c` so that compilation aligns with
+    -- evaluation: the compiler must always emit the body bytecode.
+    -- Falsely-conditioned: env unchanged.
+    -- Truly-conditioned: bindings declared inside the body are dropped
+    -- on exit (matches Yul scoping).
     match cond.eval env with
     | none   => none
     | some c =>
-      if c = 0 then some env
-      else match Program.exec body env with
-           | some env' => some (env'.drop (env'.length - env.length))
-           | none      => none
+      match Program.exec body env with
+      | none      => none
+      | some env' =>
+        if c = 0 then some env
+        else some (env'.drop (env'.length - env.length))
 
 @[simp] def Program.exec : Program → Env → Option Env
   | [],        env => some env
@@ -148,6 +152,19 @@ theorem update_length {env env' : Env}
     · simp [hkx] at h; subst h; simp
     · simp [hkx] at h; obtain ⟨_, hrest, rfl⟩ := h
       simpa using ih hrest
+
+/-- `update` preserves the sequence of names. -/
+theorem update_map_fst {env env' : Env}
+    (h : Env.update env x v = some env') :
+    env'.map Prod.fst = env.map Prod.fst := by
+  induction env generalizing env' with
+  | nil => simp at h
+  | cons head _ ih =>
+    obtain ⟨k, _⟩ := head
+    by_cases hkx : k = x
+    · simp [hkx] at h; subst h; simp [hkx.symm]
+    · simp [hkx] at h; obtain ⟨_, hrest, rfl⟩ := h
+      simp; exact ih hrest
 
 end Env
 

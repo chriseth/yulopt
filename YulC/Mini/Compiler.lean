@@ -154,4 +154,67 @@ mutual
 
 end
 
+/-! ## Layout-extension structural lemmas
+
+The compiler only ever *prepends* fresh slots to the layout: every
+statement either preserves it (`assign`, `block`, `iff`) or pushes
+exactly one named slot on top (`letDecl`). Below we expose this
+invariant so downstream proofs can recover the inner-vs-outer shape. -/
+
+theorem Stmt.compile_layout_extends :
+    ∀ {s : Stmt} {l ops l'},
+      Stmt.compile s l = some (ops, l') → ∃ ext, l' = ext ++ l := by
+  intro s l ops l' h
+  match s with
+  | .letDecl x e =>
+    simp only [Stmt.compile] at h
+    cases hc : Expr.compile e l with
+    | none   => rw [hc] at h; simp at h
+    | some c => rw [hc] at h; simp at h; exact ⟨[some x], by simp [h.2]⟩
+  | .assign x e =>
+    simp only [Stmt.compile] at h
+    cases hc : Expr.compile e l with
+    | none   => rw [hc] at h; simp at h
+    | some c =>
+      cases hd : Layout.depth l x with
+      | none   => rw [hc, hd] at h; simp at h
+      | some d => rw [hc, hd] at h; simp at h; exact ⟨[], by simp [h.2]⟩
+  | .block body =>
+    simp only [Stmt.compile] at h
+    split at h
+    next => simp at h
+    next => simp only [Option.some.injEq, Prod.mk.injEq] at h
+            exact ⟨[], by simp [h.2]⟩
+  | .iff cond body =>
+    simp only [Stmt.compile] at h
+    split at h
+    next => simp at h
+    next =>
+      split at h
+      next => simp at h
+      next => simp only [Option.some.injEq, Prod.mk.injEq] at h
+              exact ⟨[], by simp [h.2]⟩
+
+theorem Program.compile_layout_extends :
+    ∀ {p : Program} {l ops l'},
+      Program.compile p l = some (ops, l') → ∃ ext, l' = ext ++ l := by
+  intro p
+  induction p with
+  | nil =>
+    intro l ops l' h
+    simp at h; exact ⟨[], by simp [h.2]⟩
+  | cons s rest ih =>
+    intro l ops l' h
+    simp only [Program.compile] at h
+    split at h
+    next hs =>
+      split at h
+      next hr =>
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨ext1, hext1⟩ := Stmt.compile_layout_extends hs
+        obtain ⟨ext2, hext2⟩ := ih hr
+        exact ⟨ext2 ++ ext1, by rw [← h.2, hext2, hext1, List.append_assoc]⟩
+      next => simp at h
+    next => simp at h
+
 end YulC.Mini
